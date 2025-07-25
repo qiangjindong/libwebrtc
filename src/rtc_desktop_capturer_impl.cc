@@ -22,6 +22,7 @@
 #ifdef WEBRTC_WIN
 #include "modules/desktop_capture/win/window_capture_utils.h"
 #endif
+#include "rtc_base/logging.h"
 
 namespace libwebrtc {
 
@@ -41,6 +42,9 @@ RTCDesktopCapturerImpl::RTCDesktopCapturerImpl(
   options_.set_detect_updated_region(true);
 #ifdef WEBRTC_WIN
   options_.set_allow_directx_capturer(true);
+  options_.set_allow_wgc_screen_capturer(true);
+  options_.set_allow_wgc_window_capturer(true);
+  options_.set_allow_wgc_capturer_fallback(true);
 #endif
 #ifdef WEBRTC_LINUX
   if (type == kScreen) {
@@ -53,7 +57,9 @@ RTCDesktopCapturerImpl::RTCDesktopCapturerImpl(
           webrtc::DesktopCapturer::CreateScreenCapturer(options_), options_);
     } else {
       capturer_ = std::make_unique<webrtc::DesktopAndCursorComposer>(
-          webrtc::DesktopCapturer::CreateWindowCapturer(options_), options_);
+          webrtc::DesktopCapturer::CreateWindowCapturer(
+              options_, &is_wgc_window_capturer_),
+          options_);
     }
   });
 }
@@ -116,6 +122,7 @@ RTCDesktopCapturerImpl::CaptureState RTCDesktopCapturerImpl::Start(
 }
 
 void RTCDesktopCapturerImpl::Stop() {
+  RTC_LOG(LS_INFO) << "[QJD] Stop capturer\n";
   if (observer_) {
     if (!signaling_thread_->IsCurrent()) {
       signaling_thread_->BlockingCall([&, this]() { observer_->OnStop(this); });
@@ -175,8 +182,7 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
   int height = frame->size().height();
 #ifdef WEBRTC_WIN
   webrtc::DesktopRect rect_ = webrtc::DesktopRect::MakeWH(width, height);
-
-  if (type_ != kScreen) {
+  if (type_ != kScreen && !is_wgc_window_capturer_) {
     webrtc::GetWindowRect(reinterpret_cast<HWND>(source_id_), &rect_);
   }
 

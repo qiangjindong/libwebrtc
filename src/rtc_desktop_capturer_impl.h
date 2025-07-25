@@ -67,6 +67,7 @@ class RTCDesktopCapturerImpl : public RTCDesktopCapturer,
   void CaptureFrame();
   webrtc::DesktopCaptureOptions options_;
   std::unique_ptr<webrtc::DesktopCapturer> capturer_;
+  bool is_wgc_window_capturer_ = false;
   std::unique_ptr<rtc::Thread> thread_;
   rtc::scoped_refptr<webrtc::I420Buffer> i420_buffer_;
   CaptureState capture_state_ = CS_STOPPED;
