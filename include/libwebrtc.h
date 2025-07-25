@@ -53,6 +53,8 @@ class LibWebRTC {
    *
    */
   LIB_WEBRTC_API static void Terminate();
+
+  LIB_WEBRTC_API static void SetRnnoiseEnable(int enable);
 };
 
 }  // namespace libwebrtc
