@@ -5,6 +5,9 @@
 #include "rtc_base/thread.h"
 #include "rtc_peerconnection_factory_impl.h"
 
+#define WEBRTC_APM_DEBUG_DUMP 0
+#include "modules/audio_processing/audio_processing_impl.h"
+
 namespace libwebrtc {
 
 // Initialize static variable g_is_initialized to false.
@@ -36,6 +39,10 @@ LibWebRTC::CreateRTCPeerConnectionFactory() {
           new RefCountedObject<RTCPeerConnectionFactoryImpl>());
   rtc_peerconnection_factory->Initialize();
   return rtc_peerconnection_factory;
+}
+
+void LibWebRTC::SetRnnoiseEnable(int enable) {
+  webrtc::AudioProcessingImpl::SetRnnoiseEnable(enable);
 }
 
 }  // namespace libwebrtc
