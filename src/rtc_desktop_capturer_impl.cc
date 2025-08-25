@@ -45,6 +45,7 @@ RTCDesktopCapturerImpl::RTCDesktopCapturerImpl(
   options_.set_allow_wgc_screen_capturer(true);
   options_.set_allow_wgc_window_capturer(true);
   options_.set_allow_wgc_capturer_fallback(true);
+  options_.set_allow_wgc_zero_hertz(true);
 #endif
 #ifdef WEBRTC_LINUX
   if (type == kScreen) {
