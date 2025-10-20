@@ -63,10 +63,19 @@ void RTCDataChannelImpl::OnStateChange() {
 
 RTCDataChannelState RTCDataChannelImpl::state() { return state_; }
 
+uint64_t RTCDataChannelImpl::buffered_amount() const {
+  return rtc_data_channel_->buffered_amount();
+}
+
 void RTCDataChannelImpl::OnMessage(const webrtc::DataBuffer& buffer) {
   if (observer_)
     observer_->OnMessage(buffer.data.data<char>(), buffer.data.size(),
                          buffer.binary);
+}
+
+void RTCDataChannelImpl::OnBufferedAmountChange(uint64_t sent_data_size) {
+  if (observer_)
+    observer_->OnBufferedAmountChange(sent_data_size);
 }
 
 }  // namespace libwebrtc
