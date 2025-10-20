@@ -5,8 +5,7 @@
 #include "rtc_base/thread.h"
 #include "rtc_peerconnection_factory_impl.h"
 
-#define WEBRTC_APM_DEBUG_DUMP 0
-#include "modules/audio_processing/audio_processing_impl.h"
+#include "modules/audio_processing/include/audio_processing.h"
 
 namespace libwebrtc {
 
@@ -42,7 +41,7 @@ LibWebRTC::CreateRTCPeerConnectionFactory() {
 }
 
 void LibWebRTC::SetRnnoiseEnable(int enable) {
-  webrtc::AudioProcessingImpl::SetRnnoiseEnable(enable);
+  webrtc::AudioProcessing::SetRnnoiseEnable(enable);
 }
 
 }  // namespace libwebrtc

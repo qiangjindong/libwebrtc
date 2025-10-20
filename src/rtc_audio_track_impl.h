@@ -14,6 +14,48 @@
 
 namespace libwebrtc {
 
+class AudioTrackSinkAdapter : public webrtc::AudioTrackSinkInterface {
+ public:
+  AudioTrackSinkAdapter(RTCAudioTrackSinkInterface* sink,
+                        const string& track_id)
+      : sink_(sink), track_id_(track_id) {}
+
+  virtual ~AudioTrackSinkAdapter() {
+    RTC_LOG(LS_INFO) << __FUNCTION__ << ": dtor";
+  }
+
+  void OnData(const void* audio_data,
+              int bits_per_sample,
+              int sample_rate,
+              size_t number_of_channels,
+              size_t number_of_frames,
+              absl::optional<int64_t> absolute_capture_timestamp_ms) override {
+    // RTC_LOG(LS_INFO) << __FUNCTION__
+    //                  << ": number_of_channels=" << number_of_channels
+    //                  << ", track_id_=" << track_id_.c_string();
+    if (sink_) {
+      // absolute_capture_timestamp_ms 获取值
+      int64_t timestamp = absolute_capture_timestamp_ms.value_or(-1);
+      sink_->OnData(audio_data, bits_per_sample, sample_rate,
+                    number_of_channels, number_of_frames, timestamp, track_id_);
+    }
+  }
+
+  void OnData(const void* audio_data,
+              int bits_per_sample,
+              int sample_rate,
+              size_t number_of_channels,
+              size_t number_of_frames) override {
+    OnData(audio_data, bits_per_sample, sample_rate, number_of_channels,
+           number_of_frames,
+           /*absolute_capture_timestamp_ms=*/absl::nullopt);
+  }
+
+ private:
+  RTCAudioTrackSinkInterface* sink_;
+  string track_id_;
+};
+
 class AudioTrackImpl : public RTCAudioTrack {
  public:
   AudioTrackImpl(rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track);
@@ -40,9 +82,17 @@ class AudioTrackImpl : public RTCAudioTrack {
     return static_cast<RTCTrackState>(rtc_track_->state());
   }
 
+  virtual void AddSink(RTCAudioTrackSinkInterface* sink) override;
+  virtual void RemoveSink(RTCAudioTrackSinkInterface* sink) override;
+
  private:
   rtc::scoped_refptr<webrtc::AudioTrackInterface> rtc_track_;
   string id_, kind_;
+
+  webrtc::Mutex mutex_;
+  std::unordered_map<RTCAudioTrackSinkInterface*,
+                     std::unique_ptr<AudioTrackSinkAdapter>>
+      sinks_ RTC_GUARDED_BY(mutex_);
 };
 
 }  // namespace libwebrtc
