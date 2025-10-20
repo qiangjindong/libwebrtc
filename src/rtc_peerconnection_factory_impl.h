@@ -5,6 +5,7 @@
 
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "rtc_audio_device_impl.h"
 #include "rtc_base/thread.h"
@@ -75,6 +76,12 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
 
   rtc::Thread* signaling_thread() { return signaling_thread_.get(); }
 
+  void RegisterLocalAudioTrackObserver(
+      RTCLocalAudioTrackObserver* observer) override;
+
+  void UnregisterLocalAudioTrackObserver(
+      RTCLocalAudioTrackObserver* observer) override;
+
  protected:
   void CreateAudioDeviceModule_w();
 
@@ -103,6 +110,27 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
 #endif
   std::list<scoped_refptr<RTCPeerConnection>> peerconnections_;
   std::unique_ptr<webrtc::TaskQueueFactory> task_queue_factory_;
+
+  webrtc::Mutex local_audio_mutex_;
+  RTCLocalAudioTrackObserver* local_audio_observer_ {nullptr};
+  std::unique_ptr<webrtc::TaskQueueBase, webrtc::TaskQueueDeleter> local_audio_ondata_queue_;
+};
+
+class AudioFrameProcessorAdapter : public webrtc::AudioFrameProcessor {
+ public:
+  using webrtc::AudioFrameProcessor::OnAudioFrameCallback;
+
+  using OnProcessedData = std::function<void(const webrtc::AudioFrame&)>;
+
+  AudioFrameProcessorAdapter(OnProcessedData callback);
+
+  void Process(std::unique_ptr<webrtc::AudioFrame> frame) override;
+
+  void SetSink(OnAudioFrameCallback sink_callback) override;
+
+ private:
+  OnProcessedData processed_data_callback_;
+  OnAudioFrameCallback sink_callback_;
 };
 
 }  // namespace libwebrtc

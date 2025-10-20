@@ -63,6 +63,25 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
     worker_thread_->BlockingCall([=] { CreateAudioDeviceModule_w(); });
   }
 
+  local_audio_ondata_queue_ = task_queue_factory_->CreateTaskQueue(
+      "LocalAudioOnDataQueue", webrtc::TaskQueueFactory::Priority::HIGH);
+
+  auto audio_frame_processor = std::make_unique<AudioFrameProcessorAdapter>(
+      [this](const webrtc::AudioFrame& frame) {
+        // webrtc::MutexLock lock(&local_audio_mutex_);
+        if (!local_audio_observer_) return;
+        auto audio_frame = std::make_unique<webrtc::AudioFrame>();
+        audio_frame->CopyFrom(frame);
+        local_audio_ondata_queue_->PostTask([this, frame = std::move(audio_frame)]() {
+          webrtc::MutexLock lock(&local_audio_mutex_);
+          if (!local_audio_observer_) return;
+          local_audio_observer_->OnProcessedData(
+              frame->data(), frame->sample_rate_hz(), 
+              frame->num_channels(), frame->samples_per_channel(),
+              frame->absolute_capture_timestamp_ms().value_or(-1));
+        });
+      });
+
   if (!rtc_peerconnection_factory_) {
     rtc_peerconnection_factory_ = webrtc::CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
@@ -74,7 +93,7 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
         webrtc::CreateBuiltinVideoEncoderFactory(),
         webrtc::CreateBuiltinVideoDecoderFactory(),
 #endif
-        nullptr, nullptr);
+        nullptr, nullptr, std::move(audio_frame_processor));
   }
 
   if (!rtc_peerconnection_factory_.get()) {
@@ -339,6 +358,40 @@ RTCPeerConnectionFactoryImpl::GetRtpReceiverCapabilities(
       rtc_peerconnection_factory_->GetRtpReceiverCapabilities(type);
   return scoped_refptr<RTCRtpCapabilities>(
       new RefCountedObject<RTCRtpCapabilitiesImpl>(rtp_capabilities));
+}
+
+void RTCPeerConnectionFactoryImpl::RegisterLocalAudioTrackObserver(
+    RTCLocalAudioTrackObserver* observer) {
+  webrtc::MutexLock lock(&local_audio_mutex_);
+  local_audio_observer_ = observer;
+}
+
+void RTCPeerConnectionFactoryImpl::UnregisterLocalAudioTrackObserver(
+    RTCLocalAudioTrackObserver* observer) {
+  webrtc::MutexLock lock(&local_audio_mutex_);
+  if (local_audio_observer_ == observer) {
+    local_audio_observer_ = nullptr;
+  }
+}
+
+AudioFrameProcessorAdapter::AudioFrameProcessorAdapter(OnProcessedData callback)
+    : processed_data_callback_(callback) {
+}
+
+void AudioFrameProcessorAdapter::Process(
+    std::unique_ptr<webrtc::AudioFrame> frame) {
+  if (!frame) {
+    sink_callback_(nullptr);
+    return;
+  }
+
+  processed_data_callback_(*frame);
+
+  sink_callback_(std::move(frame));
+}
+
+void AudioFrameProcessorAdapter::SetSink(OnAudioFrameCallback sink_callback) {
+  sink_callback_ = std::move(sink_callback);
 }
 
 }  // namespace libwebrtc
