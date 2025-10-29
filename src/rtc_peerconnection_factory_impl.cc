@@ -93,7 +93,7 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
         webrtc::CreateBuiltinVideoEncoderFactory(),
         webrtc::CreateBuiltinVideoDecoderFactory(),
 #endif
-        nullptr, nullptr, std::move(audio_frame_processor));
+        nullptr, nullptr, audio_frame_processor.release());
   }
 
   if (!rtc_peerconnection_factory_.get()) {

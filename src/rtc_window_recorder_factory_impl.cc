@@ -15,10 +15,9 @@ RTCWindowRecorderFactoryImpl::RTCWindowRecorderFactoryImpl() {
   options_.set_detect_updated_region(true);
 #ifdef WEBRTC_WIN
   options_.set_allow_directx_capturer(true);
-  options_.set_allow_wgc_screen_capturer(true);
-  options_.set_allow_wgc_window_capturer(true);
-  options_.set_allow_wgc_capturer_fallback(true);
-  options_.set_allow_wgc_zero_hertz(true);
+  // options_.set_allow_wgc_capturer(true);
+  // options_.set_allow_wgc_capturer_fallback(true);
+  // options_.set_allow_wgc_zero_hertz(true);
 #endif
 #ifdef WEBRTC_LINUX
   if (type == kScreen) {
