@@ -41,7 +41,12 @@ LibWebRTC::CreateRTCPeerConnectionFactory() {
 }
 
 void LibWebRTC::SetRnnoiseEnable(int enable) {
+#if defined(WEBRTC_WIN)
   webrtc::AudioProcessing::SetRnnoiseEnable(enable);
+#else
+  // Rnnoise toggle is currently supported on Windows only.
+  (void)enable;
+#endif
 }
 
 }  // namespace libwebrtc
