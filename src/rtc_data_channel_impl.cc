@@ -2,11 +2,32 @@
 
 namespace libwebrtc {
 
+static RTCDataChannelState StateFromWebrtc(webrtc::DataChannelInterface::DataState state) 
+{
+  RTCDataChannelState state_;
+  switch (state) {
+    case webrtc::DataChannelInterface::kConnecting:
+      state_ = RTCDataChannelConnecting;
+      break;
+    case webrtc::DataChannelInterface::kOpen:
+      state_ = RTCDataChannelOpen;
+      break;
+    case webrtc::DataChannelInterface::kClosing:
+      state_ = RTCDataChannelClosing;
+      break;
+    case webrtc::DataChannelInterface::kClosed:
+      state_ = RTCDataChannelClosed;
+      break;
+  }
+  return state_;
+}
+
 RTCDataChannelImpl::RTCDataChannelImpl(
     rtc::scoped_refptr<webrtc::DataChannelInterface> rtc_data_channel)
     : rtc_data_channel_(rtc_data_channel), crit_sect_(new webrtc::Mutex()) {
   rtc_data_channel_->RegisterObserver(this);
   label_ = rtc_data_channel_->label();
+  state_ = StateFromWebrtc(rtc_data_channel_->state());
 }
 
 RTCDataChannelImpl::~RTCDataChannelImpl() {
