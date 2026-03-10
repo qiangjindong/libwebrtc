@@ -20,11 +20,6 @@ RTCWindowRecorderFactoryImpl::RTCWindowRecorderFactoryImpl() {
   options_.set_allow_wgc_capturer_fallback(true);
   options_.set_allow_wgc_zero_hertz(true);
 #endif
-#ifdef WEBRTC_LINUX
-  if (type == kScreen) {
-    options_.set_allow_pipewire(true);
-  }
-#endif
 }
 
 RTCWindowRecorderFactoryImpl::~RTCWindowRecorderFactoryImpl() {}
@@ -32,8 +27,15 @@ RTCWindowRecorderFactoryImpl::~RTCWindowRecorderFactoryImpl() {}
 scoped_refptr<RTCWindowRecorder>
 RTCWindowRecorderFactoryImpl::CreateWindowRecorder(
     RTCWindowRecorder::SourceId source_id) {
+#if defined(WEBRTC_WIN)
   return scoped_refptr<RTCWindowRecorderImpl>(
       new RefCountedObject<RTCWindowRecorderImpl>(source_id, options_));
+#else
+  RTC_LOG(LS_WARNING)
+      << "RTCWindowRecorder is only supported on Windows, skip creating.";
+  (void)source_id;
+  return nullptr;
+#endif
 }
 
 }  // namespace libwebrtc

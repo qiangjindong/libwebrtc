@@ -62,12 +62,16 @@ class RTCWindowRecorderImpl : public RTCWindowRecorder,
   void CaptureFrame();
 
   RTCWindowRecorder::State state_{RTCWindowRecorder::State::kStopped};
+#if defined(WEBRTC_WIN)
   RTCWindowRecorder::SourceId source_id_;
+#endif
   RTCWindowRecorderOberver* observer_{nullptr};
   std::unique_ptr<rtc::Thread> thread_;
   std::unique_ptr<webrtc::DesktopCapturer> capturer_;
+#if defined(WEBRTC_WIN)
   bool is_use_wgc_{false};
   uint32_t capture_delay_ = 1000;  // 1s
+#endif
   rtc::scoped_refptr<webrtc::I420Buffer> i420_buffer_;
 };
 

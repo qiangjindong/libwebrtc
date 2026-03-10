@@ -14,13 +14,22 @@ namespace libwebrtc {
 RTCWindowRecorderImpl::RTCWindowRecorderImpl(
     RTCWindowRecorder::SourceId source_id,
     const webrtc::DesktopCaptureOptions& options)
-    : source_id_(source_id), thread_(rtc::Thread::Create()) {
+    :
+#if defined(WEBRTC_WIN)
+      source_id_(source_id),
+#endif
+      thread_(rtc::Thread::Create()) {
   RTC_DCHECK(thread_);
   thread_->Start();
+#if defined(WEBRTC_WIN)
   thread_->BlockingCall([this, options] {
     capturer_ =
         webrtc::DesktopCapturer::CreateWindowCapturer(options, &is_use_wgc_);
   });
+#else
+  (void)source_id;
+  (void)options;
+#endif
 }
 
 RTCWindowRecorderImpl::~RTCWindowRecorderImpl() {
@@ -47,6 +56,12 @@ void RTCWindowRecorderImpl::UnregisterObserver() {
 
 RTCWindowRecorder::State RTCWindowRecorderImpl::Start(uint32_t fps) {
   using State = RTCWindowRecorder::State;
+
+#if !defined(WEBRTC_WIN)
+  (void)fps;
+  state_ = State::kFailed;
+  return state_;
+#else
 
   if (state_ == State::kRunning) {
     return state_;
@@ -79,6 +94,7 @@ RTCWindowRecorder::State RTCWindowRecorderImpl::Start(uint32_t fps) {
   state_ = State::kRunning;
   thread_->PostTask([this] { CaptureFrame(); });
   return state_;
+#endif
 }
 
 void RTCWindowRecorderImpl::Stop() {
@@ -89,13 +105,22 @@ bool RTCWindowRecorderImpl::IsRecording() {
   return state_ == RTCWindowRecorder::State::kRunning;
 }
 
+#if defined(WEBRTC_WIN)
 static int filterException(int code, PEXCEPTION_POINTERS ex) {
+  (void)code;
+  (void)ex;
   return EXCEPTION_EXECUTE_HANDLER;
 }
+#endif
 
 void RTCWindowRecorderImpl::OnCaptureResult(
     webrtc::DesktopCapturer::Result result,
     std::unique_ptr<webrtc::DesktopFrame> frame) {
+#if !defined(WEBRTC_WIN)
+  (void)result;
+  (void)frame;
+  return;
+#else
   if (result == webrtc::DesktopCapturer::Result::ERROR_TEMPORARY) {
     return;
   }
@@ -138,9 +163,13 @@ void RTCWindowRecorderImpl::OnCaptureResult(
   __except (filterException(GetExceptionCode(), GetExceptionInformation())) {
   }
 #endif
+#endif
 }
 
 void RTCWindowRecorderImpl::CaptureFrame() {
+#if !defined(WEBRTC_WIN)
+  return;
+#else
   RTC_DCHECK_RUN_ON(thread_.get());
   if (state_ == RTCWindowRecorder::State::kRunning) {
     capturer_->CaptureFrame();
@@ -148,6 +177,7 @@ void RTCWindowRecorderImpl::CaptureFrame() {
         [this]() { CaptureFrame(); },
         webrtc::TimeDelta::Millis(capture_delay_));
   }
+#endif
 }
 
 }  // namespace libwebrtc
