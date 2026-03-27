@@ -4,6 +4,7 @@
 #include "rtc_base/ssl_adapter.h"
 #include "rtc_base/thread.h"
 #include "rtc_peerconnection_factory_impl.h"
+#include "rtc_base/logging.h"
 
 #include "modules/audio_processing/include/audio_processing.h"
 
@@ -15,6 +16,7 @@ static bool g_is_initialized = false;
 // Initializes SSL, if not initialized.
 bool LibWebRTC::Initialize() {
   if (!g_is_initialized) {
+    rtc::LogMessage::LogToDebug(rtc::LS_INFO);
     rtc::InitializeSSL();
     g_is_initialized = true;
   }

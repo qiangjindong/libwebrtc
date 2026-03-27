@@ -44,6 +44,8 @@ class ScreenCapturerTrackSource : public webrtc::VideoTrackSource {
   virtual ~ScreenCapturerTrackSource() { capturer_->Stop(); }
 
  private:
+  bool is_screencast() const override { return true; }
+
   rtc::VideoSourceInterface<webrtc::VideoFrame>* source() override {
     return static_cast<RTCDesktopCapturerImpl*>(capturer_.get());
   }

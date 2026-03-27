@@ -22,6 +22,9 @@ scoped_refptr<RTCVideoFrame> VideoFrameBufferImpl::Copy() {
   scoped_refptr<VideoFrameBufferImpl> frame =
       scoped_refptr<VideoFrameBufferImpl>(
           new RefCountedObject<VideoFrameBufferImpl>(buffer_));
+  frame->set_timestamp_us(timestamp_us_);
+  frame->set_ntp_time_ms(ntp_time_ms_);
+  frame->set_rotation(rotation_);
   return frame;
 }
 

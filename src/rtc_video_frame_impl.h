@@ -45,6 +45,9 @@ class VideoFrameBufferImpl : public RTCVideoFrame {
   int64_t timestamp_us() const { return timestamp_us_; }
   void set_timestamp_us(int64_t timestamp_us) { timestamp_us_ = timestamp_us; }
 
+  int64_t ntp_time_ms() const override { return ntp_time_ms_; }
+  void set_ntp_time_ms(int64_t ntp_time_ms) { ntp_time_ms_ = ntp_time_ms; }
+
   virtual RTCVideoFrame::VideoRotation rotation() override;
 
   webrtc::VideoRotation rotation() const { return rotation_; }
@@ -54,6 +57,7 @@ class VideoFrameBufferImpl : public RTCVideoFrame {
  private:
   rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer_;
   int64_t timestamp_us_ = 0;
+  int64_t ntp_time_ms_ = 0;
   webrtc::VideoRotation rotation_ = webrtc::kVideoRotation_0;
 };
 

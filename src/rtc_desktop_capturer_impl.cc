@@ -23,10 +23,22 @@
 #include "modules/desktop_capture/win/window_capture_utils.h"
 #endif
 #include "rtc_base/logging.h"
+#include "rtc_base/time_utils.h"
 
 namespace libwebrtc {
 
 enum { kCaptureDelay = 33, kCaptureMessageId = 1000 };
+
+// ---------------------------------------------------------------------------
+// Perf instrumentation — enabled only when LIBWEBRTC_CAPTURE_PERF is defined.
+// Define it in your build (e.g. GN: defines = ["LIBWEBRTC_CAPTURE_PERF"])
+// or locally for a debug session.
+// ---------------------------------------------------------------------------
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+#define CAPTURE_PERF_LOG(...) RTC_LOG(LS_INFO) << "[CapturePerf] " << __VA_ARGS__
+#else
+#define CAPTURE_PERF_LOG(...) do {} while (0)
+#endif
 
 RTCDesktopCapturerImpl::RTCDesktopCapturerImpl(
     DesktopType type, webrtc::DesktopCapturer::SourceId source_id,
@@ -181,6 +193,22 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
 
   int width = frame->size().width();
   int height = frame->size().height();
+
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+  const int64_t capture_done_us = rtc::TimeMicros();
+  const int64_t capture_to_callback_us =
+      (capture_frame_start_us_ > 0)
+          ? (capture_done_us - capture_frame_start_us_)
+          : 0;
+  const bool region_empty =
+      frame->updated_region().is_empty();
+  CAPTURE_PERF_LOG("OnCaptureResult"
+      << " src=" << source_id_
+      << " type=" << (type_ == kScreen ? "screen" : "window")
+      << " size=" << width << "x" << height
+      << " region_empty=" << region_empty
+      << " capture_to_cb_ms=" << (capture_to_callback_us / 1000.0));
+#endif
 #ifdef WEBRTC_WIN
   webrtc::DesktopRect rect_ = webrtc::DesktopRect::MakeWH(width, height);
   if (type_ != kScreen && !is_wgc_window_capturer_) {
@@ -208,8 +236,28 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
 #endif
                           width, height, libyuv::kRotate0, libyuv::FOURCC_ARGB);
 
-    OnFrame(webrtc::VideoFrame(i420_buffer_, 0, rtc::TimeMillis(),
-                               webrtc::kVideoRotation_0));
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+    const int64_t convert_done_us = rtc::TimeMicros();
+    const int64_t convert_us = convert_done_us - capture_done_us;
+    perf_sum_capture_us_ += capture_to_callback_us;
+    perf_sum_convert_us_ += convert_us;
+    if (region_empty) ++perf_empty_region_count_;
+    ++perf_frame_count_;
+    CAPTURE_PERF_LOG("convert_i420_ms=" << (convert_us / 1000.0));
+    if (perf_frame_count_ >= kPerfReportIntervalFrames) {
+      CAPTURE_PERF_LOG("=== rolling avg over " << perf_frame_count_ << " frames"
+          << " avg_capture_ms=" << (perf_sum_capture_us_ / perf_frame_count_ / 1000.0)
+          << " avg_convert_i420_ms=" << (perf_sum_convert_us_ / perf_frame_count_ / 1000.0)
+          << " empty_region_ratio=" << perf_empty_region_count_ << "/" << perf_frame_count_);
+      perf_frame_count_ = 0;
+      perf_sum_capture_us_ = 0;
+      perf_sum_convert_us_ = 0;
+      perf_empty_region_count_ = 0;
+    }
+#endif
+
+    OnFrame(webrtc::VideoFrame(
+        i420_buffer_, webrtc::kVideoRotation_0, rtc::TimeMicros()));
   }
 #ifdef WEBRTC_WIN
   __except (filterException(GetExceptionCode(), GetExceptionInformation())) {
@@ -220,6 +268,9 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
 void RTCDesktopCapturerImpl::CaptureFrame() {
   RTC_DCHECK_RUN_ON(thread_.get());
   if (capture_state_ == CS_RUNNING) {
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+    capture_frame_start_us_ = rtc::TimeMicros();
+#endif
     capturer_->CaptureFrame();
     thread_->PostDelayedHighPrecisionTask(
         [this]() { CaptureFrame(); },

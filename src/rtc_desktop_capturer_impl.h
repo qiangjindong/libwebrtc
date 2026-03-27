@@ -17,6 +17,9 @@
 #ifndef LIBWEBRTC_RTC_DESKTOP_CAPTURER_IMPL_HXX
 #define LIBWEBRTC_RTC_DESKTOP_CAPTURER_IMPL_HXX
 
+#include <atomic>
+#include <cstdint>
+
 #include "api/video/i420_buffer.h"
 #include "api/video/video_frame.h"
 #include "include/rtc_desktop_capturer.h"
@@ -83,6 +86,17 @@ class RTCDesktopCapturerImpl : public RTCDesktopCapturer,
   uint32_t y_ = 0;
   uint32_t w_ = 0;
   uint32_t h_ = 0;
+
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+  // Perf counters — all updated only on the capture thread.
+  int64_t capture_frame_start_us_ = 0;
+  // Rolling stats (reset every kPerfReportIntervalFrames frames).
+  static constexpr int kPerfReportIntervalFrames = 30;
+  int perf_frame_count_ = 0;
+  int64_t perf_sum_capture_us_ = 0;
+  int64_t perf_sum_convert_us_ = 0;
+  int perf_empty_region_count_ = 0;
+#endif
 };
 
 }  // namespace libwebrtc

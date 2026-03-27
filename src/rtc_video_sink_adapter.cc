@@ -27,6 +27,7 @@ void VideoSinkAdapter::OnFrame(const webrtc::VideoFrame& video_frame) {
 
   frame_buffer->set_rotation(video_frame.rotation());
   frame_buffer->set_timestamp_us(video_frame.timestamp_us());
+  frame_buffer->set_ntp_time_ms(video_frame.ntp_time_ms());
 
   webrtc::MutexLock cs(crt_sec_.get());
   for (auto renderer : renderers_) {

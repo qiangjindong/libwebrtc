@@ -42,6 +42,7 @@ rtc_shared_library("libwebrtc") {
   defines = [
     "USE_LIBYUV",
     "WEBRTC_INCLUDE_INTERNAL_AUDIO_DEVICE",
+    "LIBWEBRTC_CAPTURE_PERF",  # Uncomment to enable capture perf logging
   ]
 
   if (is_win) {
