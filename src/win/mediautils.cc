@@ -50,7 +50,7 @@ AudioCodec MediaUtils::GetAudioCodecFromString(const std::string& codec_name) {
   if (it != audio_codec_names.end()) {
     return it->second;
   }
-  RTC_NOTREACHED();
+  RTC_DCHECK_NOTREACHED();
   return AudioCodec::kUnknown;
 }
 VideoCodec MediaUtils::GetVideoCodecFromString(const std::string& codec_name) {
@@ -58,7 +58,7 @@ VideoCodec MediaUtils::GetVideoCodecFromString(const std::string& codec_name) {
   if (it != video_codec_names.end()) {
     return it->second;
   }
-  RTC_NOTREACHED();
+  RTC_DCHECK_NOTREACHED();
   return VideoCodec::kUnknown;
 }
 std::string MediaUtils::AudioCodecToString(const AudioCodec& audio_codec) {
@@ -69,7 +69,7 @@ std::string MediaUtils::AudioCodecToString(const AudioCodec& audio_codec) {
   if (it != audio_codec_names.end()) {
     return it->first;
   } else {
-    RTC_NOTREACHED();
+    RTC_DCHECK_NOTREACHED();
     return "unknown";
   }
 }
@@ -81,7 +81,7 @@ std::string MediaUtils::VideoCodecToString(const VideoCodec& video_codec) {
   if (it != video_codec_names.end()) {
     return it->first;
   } else {
-    RTC_NOTREACHED();
+    RTC_DCHECK_NOTREACHED();
     return "unknown";
   }
 }
@@ -179,7 +179,7 @@ absl::optional<H265ProfileId> StringToH265Profile(const std::string& str) {
 }
 
 absl::optional<AV1Profile> MediaUtils::ParseSdpForAV1Profile(
-    const webrtc::SdpVideoFormat::Parameters& params) {
+    const webrtc::CodecParameterMap& params) {
   const char kAV1FmtpProfileId[] = "profile";
   const auto profile_it = params.find(kAV1FmtpProfileId);
   if (profile_it == params.end()) return AV1Profile::kMain;
@@ -188,7 +188,7 @@ absl::optional<AV1Profile> MediaUtils::ParseSdpForAV1Profile(
 }
 
 absl::optional<H265ProfileId> MediaUtils::ParseSdpForH265Profile(
-    const webrtc::SdpVideoFormat::Parameters& params) {
+    const webrtc::CodecParameterMap& params) {
   const char kHEVCFmtpProfileId[] = "profile-id";
   const auto profile_it = params.find(kHEVCFmtpProfileId);
   if (profile_it == params.end()) return H265ProfileId::kMain;

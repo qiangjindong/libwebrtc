@@ -83,6 +83,15 @@ class MSDKVideoEncoder : public webrtc::VideoEncoder {
 #endif
 
   std::vector<mfxExtBuffer*> m_enc_ext_params_;
+  mfxExtCodingOption m_ext_coding_opt_;
+  mfxExtCodingOption2 m_ext_coding_opt2_;
+#if (MFX_VERSION >= 1026)
+  mfxExtCodingOption3 m_ext_coding_opt3_;
+#endif
+#if (MFX_VERSION >= 1025)
+  mfxExtMultiFrameParam m_ext_mfe_param_;
+  mfxExtMultiFrameControl m_ext_mfe_ctrl_;
+#endif
   mfxFrameAllocResponse m_enc_response_;
   mfxFrameSurface1* m_penc_surfaces_;  // frames array for encoder
   mfxU32 m_frames_processed_;

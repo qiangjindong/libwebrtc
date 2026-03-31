@@ -159,7 +159,7 @@ bool MSDKVideoDecoder::Configure(const Settings& settings) {
 
   // return decoder_thread_->Invoke<int32_t>(RTC_FROM_HERE,
   //    Bind(&MSDKVideoDecoder::InitDecodeOnCodecThread, this));
-  return decoder_thread_->Invoke<bool>(RTC_FROM_HERE, [this] {
+  return decoder_thread_->BlockingCall([this] {
     return InitDecodeOnCodecThread() == WEBRTC_VIDEO_CODEC_OK;
   });
 }
@@ -392,14 +392,14 @@ dec_header:
           // TODO(johny): we should extend the buffer structure to include
           // not only the CropW|CropH value, but also the CropX|CropY for the
           // renderer to correctly setup the video processor input view.
-          rtc::scoped_refptr<owt::base::NativeHandleBuffer> buffer =
+          rtc::scoped_refptr<owt::base::NativeHandleBuffer> buffer(
               new rtc::RefCountedObject<owt::base::NativeHandleBuffer>(
                   (void*)surface_handle_.get(), frame_info.CropW,
-                  frame_info.CropH);
-          webrtc::VideoFrame decoded_frame(buffer, inputImage.Timestamp(), 0,
+                  frame_info.CropH));
+          webrtc::VideoFrame decoded_frame(buffer, inputImage.RtpTimestamp(), 0,
                                            webrtc::kVideoRotation_0);
-          decoded_frame.set_ntp_time_ms(inputImage.ntp_time_ms_);
-          decoded_frame.set_timestamp(inputImage.Timestamp());
+          decoded_frame.set_ntp_time_ms(inputImage.NtpTimeMs());
+          decoded_frame.set_rtp_timestamp(inputImage.RtpTimestamp());
           callback_->Decoded(decoded_frame);
         }
       }

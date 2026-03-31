@@ -8,6 +8,7 @@
 #include <combaseapi.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <d3d9.h>
 #include <dxva2api.h>
 
 #include <memory>

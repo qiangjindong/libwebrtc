@@ -26,7 +26,8 @@ class MSDKVideoDecoderFactory : public webrtc::VideoDecoderFactory {
   // VideoDecoderFactory implementation
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
-  std::unique_ptr<webrtc::VideoDecoder> CreateVideoDecoder(
+  std::unique_ptr<webrtc::VideoDecoder> Create(
+      const webrtc::Environment& env,
       const webrtc::SdpVideoFormat& format) override;
 
  private:

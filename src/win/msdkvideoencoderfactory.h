@@ -19,13 +19,15 @@ class MSDKVideoEncoderFactory : public webrtc::VideoEncoderFactory {
  public:
   MSDKVideoEncoderFactory();
   ~MSDKVideoEncoderFactory() {}
-  std::unique_ptr<webrtc::VideoEncoder> CreateVideoEncoder(
+  std::unique_ptr<webrtc::VideoEncoder> Create(
+      const webrtc::Environment& env,
       const webrtc::SdpVideoFormat& format) override;
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
-  webrtc::VideoEncoderFactory::CodecInfo QueryVideoEncoder(
-      const webrtc::SdpVideoFormat& format) const override;
+  webrtc::VideoEncoderFactory::CodecSupport QueryCodecSupport(
+      const webrtc::SdpVideoFormat& format,
+      absl::optional<std::string> scalability_mode) const override;
 
  private:
   std::vector<webrtc::VideoCodecType> supported_codec_types_;

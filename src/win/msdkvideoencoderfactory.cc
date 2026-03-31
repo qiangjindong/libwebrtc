@@ -30,8 +30,7 @@ MSDKVideoEncoderFactory::MSDKVideoEncoderFactory() {
   codecs_to_check.push_back(owt::base::VideoCodec::kVp8);
 #endif
 
-  std::vector<VideoEncoderCapability> capabilities =
-      media_capability->SupportedCapabilitiesForVideoEncoder(codecs_to_check);
+  media_capability->SupportedCapabilitiesForVideoEncoder(codecs_to_check);
   // TODO(jianlin): use the check result from MSDK.
   supported_codec_types_.push_back(webrtc::kVideoCodecH264);
   supported_codec_types_.push_back(webrtc::kVideoCodecVP8);
@@ -40,29 +39,27 @@ MSDKVideoEncoderFactory::MSDKVideoEncoderFactory() {
 }
 
 std::unique_ptr<webrtc::VideoEncoder>
-MSDKVideoEncoderFactory::CreateVideoEncoder(
+MSDKVideoEncoderFactory::Create(
+    const webrtc::Environment& env,
     const webrtc::SdpVideoFormat& format) {
-  bool vp9_hw = false, vp8_hw = false, av1_hw = false, h264_hw = false;
+  bool vp8_hw = false, h264_hw = false;
   for (auto& codec : supported_codec_types_) {
-    if (codec == webrtc::kVideoCodecAV1)
-      av1_hw = false;
-    else if (codec == webrtc::kVideoCodecH264)
+    if (codec == webrtc::kVideoCodecH264)
       h264_hw = true;
     else if (codec == webrtc::kVideoCodecVP8)
       vp8_hw = false;
-    else if (codec == webrtc::kVideoCodecVP9)
-      vp9_hw = false;
   }
   // VP8 encoding will always use SW impl.
   if (absl::EqualsIgnoreCase(format.name, cricket::kVp8CodecName) && !vp8_hw)
-    return webrtc::VP8Encoder::Create();
+    return webrtc::CreateVp8Encoder(env);
   // VP9 encoding will only be enabled on ICL+;
   else if (absl::EqualsIgnoreCase(format.name, cricket::kVp9CodecName))
-    return webrtc::VP9Encoder::Create(cricket::VideoCodec(format));
+    return webrtc::CreateVp9Encoder(env);
   // TODO: Replace with AV1 HW encoder post ADL.
   else if (absl::EqualsIgnoreCase(format.name, cricket::kAv1CodecName))
-    return webrtc::CreateLibaomAv1Encoder();
-  return MSDKVideoEncoder::Create(cricket::VideoCodec(format));
+    return webrtc::CreateLibaomAv1Encoder(env);
+  return h264_hw ? MSDKVideoEncoder::Create(cricket::CreateVideoCodec(format))
+                 : nullptr;
 }
 
 std::vector<webrtc::SdpVideoFormat>
@@ -76,19 +73,23 @@ MSDKVideoEncoderFactory::GetSupportedFormats() const {
   supported_codecs.push_back(webrtc::SdpVideoFormat(cricket::kVp8CodecName));
   for (const webrtc::SdpVideoFormat& format : webrtc::SupportedVP9Codecs())
     supported_codecs.push_back(format);
-  if (webrtc::kIsLibaomAv1EncoderSupported) {
-    supported_codecs.push_back(webrtc::SdpVideoFormat(cricket::kAv1CodecName));
-  }
+  supported_codecs.push_back(webrtc::SdpVideoFormat(cricket::kAv1CodecName));
 
   return supported_codecs;
 }
 
-webrtc::VideoEncoderFactory::CodecInfo
-MSDKVideoEncoderFactory::QueryVideoEncoder(
-    const webrtc::SdpVideoFormat& format) const {
-  webrtc::VideoEncoderFactory::CodecInfo info;
-  info.has_internal_source = false;
-  return info;
+webrtc::VideoEncoderFactory::CodecSupport
+MSDKVideoEncoderFactory::QueryCodecSupport(
+    const webrtc::SdpVideoFormat& format,
+    absl::optional<std::string> scalability_mode) const {
+  (void)scalability_mode;
+
+  webrtc::VideoEncoderFactory::CodecSupport support;
+  support.is_supported = format.IsCodecInList(GetSupportedFormats());
+  support.is_power_efficient =
+      support.is_supported &&
+      absl::EqualsIgnoreCase(format.name, cricket::kH264CodecName);
+  return support;
 }
 
 }  // namespace base

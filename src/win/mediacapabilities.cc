@@ -71,6 +71,7 @@ MediaCapabilities::SupportedCapabilitiesForVideoEncoder(
       if (mfx_platform_.MediaAdapterType == MFX_MEDIA_DISCRETE)
         is_discrete_graphics = true;
 #endif
+      (void)is_discrete_graphics;
       // Query platform capability for specific codec. Only check for
       // VP9/HEVC/AVC at this stage, as AV1 HW encoding is not enabled.
       mfxStatus sts = MFX_ERR_NONE;

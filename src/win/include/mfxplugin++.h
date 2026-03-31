@@ -435,7 +435,7 @@ class MFXAudioCodecPluginAdapterBase : public MFXPluginAdapterBase<T> {
     m_codecPlg.Close = _Close;
     m_codecPlg.GetAudioParam = _GetAudioParam;
   }
-  MFXAudioCodecPluginAdapterBase(const MFXCodecPluginAdapterBase<T>& that)
+  MFXAudioCodecPluginAdapterBase(const MFXAudioCodecPluginAdapterBase<T>& that)
       : MFXPluginAdapterBase<T>(reinterpret_cast<T*>(that.m_mfxAPI.pthis),
                                 &m_codecPlg),
         m_codecPlg() {

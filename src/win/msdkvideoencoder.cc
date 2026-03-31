@@ -11,10 +11,13 @@
 #include "common_video/h264/h264_common.h"
 #include "libyuv/convert_from.h"
 #include "mfxcommon.h"
+#include "modules/video_coding/include/video_codec_interface.h"
+#include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/system/file_wrapper.h"
 #include "rtc_base/thread.h"
+#include "rtc_base/time_utils.h"
 #include "src/win/d3d_allocator.h"
 #include "src/win/mediautils.h"
 #include "src/win/msdkvideobase.h"
@@ -33,6 +36,7 @@ MSDKVideoEncoder::MSDKVideoEncoder(const cricket::VideoCodec& format)
       bitrate_(0),
       width_(0),
       height_(0),
+      rtp_codec_parameters_(format),
       encoder_thread_(rtc::Thread::Create()),
       inited_(false) {
   m_penc_surfaces_ = nullptr;
@@ -40,9 +44,6 @@ MSDKVideoEncoder::MSDKVideoEncoder(const cricket::VideoCodec& format)
   encoder_thread_->SetName("MSDKVideoEncoderThread", nullptr);
   RTC_CHECK(encoder_thread_->Start())
       << "Failed to start encoder thread for MSDK encoder";
-
-  rtp_codec_parameters_ = format;
-
   encoder_dump_file_name_ =
       webrtc::field_trial::FindFullName("WebRTC-EncoderDataDumpDirectory");
   // Because '/' can't be used inside a field trial parameter, we use ';'
@@ -96,8 +97,8 @@ int MSDKVideoEncoder::InitEncode(const webrtc::VideoCodec* codec_settings,
   //     RTC_FROM_HERE,
   //     rtc::Bind(&MSDKVideoEncoder::InitEncodeOnEncoderThread, this,
   //               codec_settings, number_of_cores, max_payload_size));
-  return encoder_thread_->Invoke<int>(
-      RTC_FROM_HERE, [this, codec_settings, number_of_cores, max_payload_size] {
+  return encoder_thread_->BlockingCall(
+      [this, codec_settings, number_of_cores, max_payload_size] {
         return InitEncodeOnEncoderThread(codec_settings, number_of_cores,
                                          max_payload_size);
       });
@@ -152,11 +153,16 @@ int MSDKVideoEncoder::InitEncodeOnEncoderThread(
   // instead of setting it all over again.
   if (inited_) {
     m_pmfx_enc_->Close();
+    m_pmfx_enc_.reset();
     MSDK_SAFE_DELETE_ARRAY(m_penc_surfaces_);
     m_pmfx_allocator_.reset();
+    // Destroy old session before creating a new one to avoid leak.
+    if (m_mfx_session_) {
+      MSDKFactory::Get()->DestroySession(m_mfx_session_);
+      m_mfx_session_ = nullptr;
+    }
     // Settings change, we need to reconfigure the allocator.
     // Alternatively we totally reinitialize the encoder here.
-  } else {
   }
   MSDKFactory* factory = MSDKFactory::Get();
   // We're not using d3d11.
@@ -217,51 +223,46 @@ int MSDKVideoEncoder::InitEncodeOnEncoderThread(
   m_mfx_enc_params_.AsyncDepth = 1;
   m_mfx_enc_params_.mfx.NumRefFrame = 2;
 
-  mfxExtCodingOption extendedCodingOptions;
-  MSDK_ZERO_MEMORY(extendedCodingOptions);
-  extendedCodingOptions.Header.BufferId = MFX_EXTBUFF_CODING_OPTION;
-  extendedCodingOptions.Header.BufferSz = sizeof(extendedCodingOptions);
-  extendedCodingOptions.AUDelimiter = MFX_CODINGOPTION_OFF;
-  extendedCodingOptions.PicTimingSEI = MFX_CODINGOPTION_OFF;
-  extendedCodingOptions.VuiNalHrdParameters = MFX_CODINGOPTION_OFF;
-  mfxExtCodingOption2 extendedCodingOptions2;
-  MSDK_ZERO_MEMORY(extendedCodingOptions2);
-  extendedCodingOptions2.Header.BufferId = MFX_EXTBUFF_CODING_OPTION2;
-  extendedCodingOptions2.Header.BufferSz = sizeof(extendedCodingOptions2);
-  extendedCodingOptions2.RepeatPPS = MFX_CODINGOPTION_OFF;
+  MSDK_ZERO_MEMORY(m_ext_coding_opt_);
+  m_ext_coding_opt_.Header.BufferId = MFX_EXTBUFF_CODING_OPTION;
+  m_ext_coding_opt_.Header.BufferSz = sizeof(m_ext_coding_opt_);
+  m_ext_coding_opt_.AUDelimiter = MFX_CODINGOPTION_OFF;
+  m_ext_coding_opt_.PicTimingSEI = MFX_CODINGOPTION_OFF;
+  m_ext_coding_opt_.VuiNalHrdParameters = MFX_CODINGOPTION_OFF;
+  MSDK_ZERO_MEMORY(m_ext_coding_opt2_);
+  m_ext_coding_opt2_.Header.BufferId = MFX_EXTBUFF_CODING_OPTION2;
+  m_ext_coding_opt2_.Header.BufferSz = sizeof(m_ext_coding_opt2_);
+  m_ext_coding_opt2_.RepeatPPS = MFX_CODINGOPTION_OFF;
   if (codec_id == MFX_CODEC_AVC || codec_id == MFX_CODEC_HEVC) {
-    m_enc_ext_params_.push_back((mfxExtBuffer*)&extendedCodingOptions);
-    m_enc_ext_params_.push_back((mfxExtBuffer*)&extendedCodingOptions2);
+    m_enc_ext_params_.push_back((mfxExtBuffer*)&m_ext_coding_opt_);
+    m_enc_ext_params_.push_back((mfxExtBuffer*)&m_ext_coding_opt2_);
   }
 
 #if (MFX_VERSION >= 1025)
   uint32_t timeout = MSDKFactory::Get()->MFETimeout();
   // Do not enable MFE for VP9 at present.
   if (timeout && codec_id != MFX_CODEC_VP9) {
-    mfxExtMultiFrameParam multiFrameParam;
-    MSDK_ZERO_MEMORY(multiFrameParam);
-    multiFrameParam.Header.BufferId = MFX_EXTBUFF_MULTI_FRAME_PARAM;
-    multiFrameParam.Header.BufferSz = sizeof(multiFrameParam);
-    multiFrameParam.MFMode = MFX_MF_AUTO;
-    m_enc_ext_params_.push_back((mfxExtBuffer*)&multiFrameParam);
+    MSDK_ZERO_MEMORY(m_ext_mfe_param_);
+    m_ext_mfe_param_.Header.BufferId = MFX_EXTBUFF_MULTI_FRAME_PARAM;
+    m_ext_mfe_param_.Header.BufferSz = sizeof(m_ext_mfe_param_);
+    m_ext_mfe_param_.MFMode = MFX_MF_AUTO;
+    m_enc_ext_params_.push_back((mfxExtBuffer*)&m_ext_mfe_param_);
 
-    mfxExtMultiFrameControl multiFrameControl;
-    MSDK_ZERO_MEMORY(multiFrameControl);
-    multiFrameControl.Header.BufferId = MFX_EXTBUFF_MULTI_FRAME_CONTROL;
-    multiFrameControl.Header.BufferSz = sizeof(multiFrameControl);
-    multiFrameControl.Timeout = timeout;
-    m_enc_ext_params_.push_back((mfxExtBuffer*)&multiFrameControl);
+    MSDK_ZERO_MEMORY(m_ext_mfe_ctrl_);
+    m_ext_mfe_ctrl_.Header.BufferId = MFX_EXTBUFF_MULTI_FRAME_CONTROL;
+    m_ext_mfe_ctrl_.Header.BufferSz = sizeof(m_ext_mfe_ctrl_);
+    m_ext_mfe_ctrl_.Timeout = timeout;
+    m_enc_ext_params_.push_back((mfxExtBuffer*)&m_ext_mfe_ctrl_);
   }
 #endif
 
 #if (MFX_VERSION >= 1026)
-  mfxExtCodingOption3 extendedCodingOptions3;
-  MSDK_ZERO_MEMORY(extendedCodingOptions3);
-  extendedCodingOptions3.Header.BufferId = MFX_EXTBUFF_CODING_OPTION3;
-  extendedCodingOptions3.Header.BufferSz = sizeof(extendedCodingOptions3);
-  extendedCodingOptions3.ExtBrcAdaptiveLTR = MFX_CODINGOPTION_ON;
+  MSDK_ZERO_MEMORY(m_ext_coding_opt3_);
+  m_ext_coding_opt3_.Header.BufferId = MFX_EXTBUFF_CODING_OPTION3;
+  m_ext_coding_opt3_.Header.BufferSz = sizeof(m_ext_coding_opt3_);
+  m_ext_coding_opt3_.ExtBrcAdaptiveLTR = MFX_CODINGOPTION_ON;
   if (codec_id != MFX_CODEC_VP9)
-    m_enc_ext_params_.push_back((mfxExtBuffer*)&extendedCodingOptions3);
+    m_enc_ext_params_.push_back((mfxExtBuffer*)&m_ext_coding_opt3_);
 #endif
 
   num_temporal_layers_ =
@@ -408,7 +409,6 @@ int MSDKVideoEncoder::Encode(
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
   mfxU16 w, h, pitch;
-  mfxU8* ptr;
   if (pInfo.CropH > 0 && pInfo.CropW > 0) {
     w = pInfo.CropW;
     h = pInfo.CropH;
@@ -418,7 +418,6 @@ int MSDKVideoEncoder::Encode(
   }
 
   pitch = pData.Pitch;
-  ptr = pData.Y + pInfo.CropX + pInfo.CropY * pData.Pitch;
 
   if (MFX_FOURCC_NV12 == pInfo.FourCC) {
     rtc::scoped_refptr<webrtc::I420BufferInterface> buffer(
@@ -522,7 +521,7 @@ retry:
   encodedFrame._encodedHeight = input_image.height();
   encodedFrame._encodedWidth = input_image.width();
   encodedFrame.capture_time_ms_ = input_image.render_time_ms();
-  encodedFrame.SetTimestamp(input_image.timestamp());
+  encodedFrame.SetRtpTimestamp(input_image.timestamp());
   // For VP9 we will override this.
   encodedFrame._frameType = is_keyframe_required
                                 ? webrtc::VideoFrameType::kVideoFrameKey
@@ -617,7 +616,6 @@ webrtc::VideoEncoder::EncoderInfo MSDKVideoEncoder::GetEncoderInfo() const {
   EncoderInfo info;
   info.supports_native_handle = false;
   info.is_hardware_accelerated = true;
-  info.has_internal_source = false;
   info.implementation_name = "IntelMediaSDK";
   // Disable frame-dropper for MSDK.
   info.has_trusted_rate_controller = true;
