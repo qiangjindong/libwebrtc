@@ -126,6 +126,10 @@ RTCDesktopCapturerImpl::CaptureState RTCDesktopCapturerImpl::Start(
   }
 
   thread_->BlockingCall([this] { capturer_->Start(this); });
+  first_frame_sent_ = false;
+  last_frame_width_ = 0;
+  last_frame_height_ = 0;
+  last_frame_sent_us_ = 0;
   capture_state_ = CS_RUNNING;
   thread_->PostTask([this] { CaptureFrame(); });
   if (observer_) {
@@ -194,14 +198,43 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
   int width = frame->size().width();
   int height = frame->size().height();
 
+  // --- Static-frame skip logic (TASK-03) ---
+  const bool region_empty = frame->updated_region().is_empty();
+  const bool resolution_changed =
+      (width != last_frame_width_ || height != last_frame_height_);
+  const bool can_skip =
+      region_empty && first_frame_sent_ && !resolution_changed;
+
+  if (can_skip) {
+    const int64_t now_us = rtc::TimeMicros();
+    const bool refresh_needed =
+        (now_us - last_frame_sent_us_ >= kStaticRefreshIntervalUs);
+    if (!refresh_needed) {
+      // Completely skip — no conversion, no forwarding.
+      CAPTURE_PERF_LOG("skip static frame src=" << source_id_);
+#if defined(LIBWEBRTC_CAPTURE_PERF)
+      ++perf_skipped_count_;
+#endif
+      return;
+    }
+    // Periodic refresh: reuse existing i420_buffer_ (content unchanged).
+    if (i420_buffer_) {
+      last_frame_sent_us_ = now_us;
+      CAPTURE_PERF_LOG("refresh static frame src=" << source_id_);
+      OnFrame(webrtc::VideoFrame(
+          i420_buffer_, webrtc::kVideoRotation_0, now_us));
+      return;
+    }
+    // i420_buffer_ is null — fall through to full conversion.
+  }
+  // --- End static-frame skip logic ---
+
 #if defined(LIBWEBRTC_CAPTURE_PERF)
   const int64_t capture_done_us = rtc::TimeMicros();
   const int64_t capture_to_callback_us =
       (capture_frame_start_us_ > 0)
           ? (capture_done_us - capture_frame_start_us_)
           : 0;
-  const bool region_empty =
-      frame->updated_region().is_empty();
   CAPTURE_PERF_LOG("OnCaptureResult"
       << " src=" << source_id_
       << " type=" << (type_ == kScreen ? "screen" : "window")
@@ -248,16 +281,22 @@ void RTCDesktopCapturerImpl::OnCaptureResult(
       CAPTURE_PERF_LOG("=== rolling avg over " << perf_frame_count_ << " frames"
           << " avg_capture_ms=" << (perf_sum_capture_us_ / perf_frame_count_ / 1000.0)
           << " avg_convert_i420_ms=" << (perf_sum_convert_us_ / perf_frame_count_ / 1000.0)
-          << " empty_region_ratio=" << perf_empty_region_count_ << "/" << perf_frame_count_);
+          << " empty_region_ratio=" << perf_empty_region_count_ << "/" << perf_frame_count_
+          << " skipped=" << perf_skipped_count_);
       perf_frame_count_ = 0;
       perf_sum_capture_us_ = 0;
       perf_sum_convert_us_ = 0;
       perf_empty_region_count_ = 0;
+      perf_skipped_count_ = 0;
     }
 #endif
 
     OnFrame(webrtc::VideoFrame(
         i420_buffer_, webrtc::kVideoRotation_0, rtc::TimeMicros()));
+    first_frame_sent_ = true;
+    last_frame_sent_us_ = rtc::TimeMicros();
+    last_frame_width_ = width;
+    last_frame_height_ = height;
   }
 #ifdef WEBRTC_WIN
   __except (filterException(GetExceptionCode(), GetExceptionInformation())) {

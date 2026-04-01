@@ -16,7 +16,7 @@ static bool g_is_initialized = false;
 // Initializes SSL, if not initialized.
 bool LibWebRTC::Initialize() {
   if (!g_is_initialized) {
-    rtc::LogMessage::LogToDebug(rtc::LS_INFO);
+    // rtc::LogMessage::LogToDebug(rtc::LS_INFO);
     rtc::InitializeSSL();
     g_is_initialized = true;
   }

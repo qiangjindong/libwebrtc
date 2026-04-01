@@ -87,6 +87,13 @@ class RTCDesktopCapturerImpl : public RTCDesktopCapturer,
   uint32_t w_ = 0;
   uint32_t h_ = 0;
 
+  // Static-frame skip state — updated only on the capture thread.
+  bool first_frame_sent_ = false;
+  int last_frame_width_ = 0;
+  int last_frame_height_ = 0;
+  int64_t last_frame_sent_us_ = 0;
+  static constexpr int64_t kStaticRefreshIntervalUs = 2'000'000;  // 2 s
+
 #if defined(LIBWEBRTC_CAPTURE_PERF)
   // Perf counters — all updated only on the capture thread.
   int64_t capture_frame_start_us_ = 0;
@@ -96,6 +103,7 @@ class RTCDesktopCapturerImpl : public RTCDesktopCapturer,
   int64_t perf_sum_capture_us_ = 0;
   int64_t perf_sum_convert_us_ = 0;
   int perf_empty_region_count_ = 0;
+  int perf_skipped_count_ = 0;
 #endif
 };
 
