@@ -59,8 +59,22 @@ int VideoFrameBufferImpl::StrideV() const {
 int VideoFrameBufferImpl::ConvertToARGB(Type type, uint8_t* dst_buffer,
                                         int dst_stride, int dest_width,
                                         int dest_height) {
+  rtc::scoped_refptr<webrtc::I420BufferInterface> converted_i420;
+  const webrtc::I420BufferInterface* source_i420 = buffer_->GetI420();
+  if (!source_i420) {
+    converted_i420 = buffer_->ToI420();
+    source_i420 = converted_i420.get();
+  }
+
+  if (!source_i420) {
+    RTC_LOG(LS_ERROR) << "ConvertToARGB failed: buffer type "
+                      << webrtc::VideoFrameBufferTypeToString(buffer_->type())
+                      << " cannot convert to I420.";
+    return 0;
+  }
+
   rtc::scoped_refptr<webrtc::I420Buffer> i420 =
-      webrtc::I420Buffer::Rotate(*buffer_.get(), rotation_);
+      webrtc::I420Buffer::Rotate(*source_i420, rotation_);
 
   rtc::scoped_refptr<webrtc::I420Buffer> dest =
       webrtc::I420Buffer::Create(dest_width, dest_height);

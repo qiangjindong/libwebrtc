@@ -5,10 +5,11 @@
 #include "src/win/msdkvideodecoder.h"
 
 #include "api/scoped_refptr.h"
+#include "api/video/i420_buffer.h"
+#include "libyuv/convert.h"
 #include "mfxadapter.h"
 #include "msdkvideobase.h"
 #include "src/win/d3d11_allocator.h"
-#include "src/win/nativehandlebuffer.h"
 
 using namespace rtc;
 
@@ -50,7 +51,7 @@ MSDKVideoDecoder::MSDKVideoDecoder()
   m_video_param_extracted = false;
   m_dec_bs_offset_ = 0;
   inited_ = false;
-  surface_handle_.reset(new D3D11ImageHandle());
+
 }
 
 MSDKVideoDecoder::~MSDKVideoDecoder() {
@@ -381,21 +382,55 @@ dec_header:
 
 #endif
         if (callback_) {
-          surface_handle_->d3d11_device = d3d11_device_.p;
-          surface_handle_->texture =
-              reinterpret_cast<ID3D11Texture2D*>(pair.first);
-          // Texture_array_index not used when decoding with MSDK.
-          surface_handle_->texture_array_index = 0;
-          D3D11_TEXTURE2D_DESC texture_desc;
-          memset(&texture_desc, 0, sizeof(texture_desc));
-          surface_handle_->texture->GetDesc(&texture_desc);
-          // TODO(johny): we should extend the buffer structure to include
-          // not only the CropW|CropH value, but also the CropX|CropY for the
-          // renderer to correctly setup the video processor input view.
-          rtc::scoped_refptr<owt::base::NativeHandleBuffer> buffer(
-              new rtc::RefCountedObject<owt::base::NativeHandleBuffer>(
-                  (void*)surface_handle_.get(), frame_info.CropW,
-                  frame_info.CropH));
+          if (frame_info.FourCC != MFX_FOURCC_NV12) {
+            RTC_LOG(LS_ERROR)
+                << "MSDK decoder unsupported output FourCC for CPU rendering: "
+                << frame_info.FourCC;
+            return WEBRTC_VIDEO_CODEC_ERROR;
+          }
+
+          mfxFrameData frame_data;
+          MSDK_ZERO_MEMORY(frame_data);
+          sts = m_pmfx_allocator_->LockFrame(dxMemId, &frame_data);
+          if (sts != MFX_ERR_NONE) {
+            RTC_LOG(LS_ERROR) << "MSDK decoder failed to lock output frame: "
+                              << sts;
+            return WEBRTC_VIDEO_CODEC_ERROR;
+          }
+
+          const int frame_width =
+              frame_info.CropW > 0 ? frame_info.CropW : frame_info.Width;
+          const int frame_height =
+              frame_info.CropH > 0 ? frame_info.CropH : frame_info.Height;
+          const uint8_t* src_y =
+              frame_data.Y + frame_info.CropY * frame_data.Pitch + frame_info.CropX;
+          const uint8_t* src_uv =
+              frame_data.U + (frame_info.CropY / 2) * frame_data.Pitch + frame_info.CropX;
+
+          rtc::scoped_refptr<webrtc::I420Buffer> buffer =
+              webrtc::I420Buffer::Create(frame_width, frame_height);
+          const int convert_result = libyuv::NV12ToI420(
+              src_y, frame_data.Pitch, src_uv, frame_data.Pitch,
+              buffer->MutableDataY(), buffer->StrideY(),
+              buffer->MutableDataU(), buffer->StrideU(),
+              buffer->MutableDataV(), buffer->StrideV(), frame_width,
+              frame_height);
+
+          if (convert_result != 0) {
+            RTC_LOG(LS_ERROR)
+                << "MSDK decoder failed to convert NV12 to I420: "
+                << convert_result;
+          }
+          sts = m_pmfx_allocator_->UnlockFrame(dxMemId, &frame_data);
+          if (sts != MFX_ERR_NONE) {
+            RTC_LOG(LS_ERROR)
+                << "MSDK decoder failed to unlock output frame: " << sts;
+            return WEBRTC_VIDEO_CODEC_ERROR;
+          }
+          if (convert_result != 0) {
+            return WEBRTC_VIDEO_CODEC_ERROR;
+          }
+
           webrtc::VideoFrame decoded_frame(buffer, inputImage.RtpTimestamp(), 0,
                                            webrtc::kVideoRotation_0);
           decoded_frame.set_ntp_time_ms(inputImage.NtpTimeMs());
